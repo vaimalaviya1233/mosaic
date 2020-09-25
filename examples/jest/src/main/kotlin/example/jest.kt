@@ -25,27 +25,10 @@ import org.fusesource.jansi.Ansi.ansi
 import kotlin.random.Random
 
 fun main() = runBlocking {
-	val tests = mutableStateListOf<Test>()
+	val testRuns = mutableStateListOf<TestRun>()
 
 	val job = launchMosaic {
-		val (done, running) = tests.partition { it.state != Running }
-		Column {
-			if (done.isNotEmpty()) {
-				for (test in done) {
-					TestRow(test)
-				}
-				Text("") // Blank line
-			}
-
-			if (running.isNotEmpty()) {
-				for (test in running) {
-					TestRow(test)
-				}
-				Text("") // Blank line
-			}
-
-			Summary(tests)
-		}
+		JestOutput(testRuns)
 	}
 
 	// This scope is the "test runner" which interacts with the UI solely through 'tests'.
@@ -67,15 +50,15 @@ fun main() = runBlocking {
 				while (true) {
 					val path = paths.removeFirstOrNull() ?: break
 					val index = withMutableSnapshot {
-						val nextIndex = tests.size
-						tests += Test(path, Running)
+						val nextIndex = testRuns.size
+						testRuns += TestRun(path, Running)
 						nextIndex
 					}
 					delay(Random.nextLong(2_000L, 4_000L))
 					withMutableSnapshot {
 						// Flip a coin biased 60% to pass to produce the final state of the test.
 						val newState = if (Random.nextFloat() < .6f) Pass else Fail
-						tests[index] = tests[index].copy(state = newState)
+						testRuns[index] = testRuns[index].copy(state = newState)
 					}
 				}
 			}
@@ -89,19 +72,41 @@ fun main() = runBlocking {
 }
 
 @Composable
-fun TestRow(test: Test) {
-	val bg = when (test.state) {
+internal fun JestOutput(testRuns: SnapshotStateList<TestRun>) {
+	val (done, running) = testRuns.partition { it.state != Running }
+	Column {
+		if (done.isNotEmpty()) {
+			for (test in done) {
+				TestRow(test)
+			}
+			Text("") // Blank line
+		}
+
+		if (running.isNotEmpty()) {
+			for (test in running) {
+				TestRow(test)
+			}
+			Text("") // Blank line
+		}
+
+		Summary(testRuns)
+	}
+}
+
+@Composable
+private fun TestRow(testRun: TestRun) {
+	val bg = when (testRun.state) {
 		Running -> Ansi.Color.YELLOW
 		Pass -> Ansi.Color.GREEN
 		Fail -> Ansi.Color.RED
 	}
-	val state = when (test.state) {
+	val state = when (testRun.state) {
 		Running -> "RUNS"
 		Pass -> "PASS"
 		Fail -> "FAIL"
 	}
-	val dir = test.path.substringBeforeLast('/')
-	val name = test.path.substringAfterLast('/')
+	val dir = testRun.path.substringBeforeLast('/')
+	val name = testRun.path.substringAfterLast('/')
 	Text(ansi()
 		.bg(bg).fgBlack().a(' ').a(state).a(' ').reset()
 		.a(' ')
@@ -110,11 +115,11 @@ fun TestRow(test: Test) {
 }
 
 @Composable
-private fun Summary(tests: SnapshotStateList<Test>) {
+private fun Summary(testRuns: SnapshotStateList<TestRun>) {
 	Row {
 		Text("Tests: ")
 
-		val failed = tests.count { it.state == Fail }
+		val failed = testRuns.count { it.state == Fail }
 		if (failed > 0) {
 			Text(ansi()
 				.fgRed().a(failed).a(" failed").reset()
@@ -122,7 +127,7 @@ private fun Summary(tests: SnapshotStateList<Test>) {
 				.toString())
 		}
 
-		val passed = tests.count { it.state == Pass }
+		val passed = testRuns.count { it.state == Pass }
 		if (passed > 0) {
 			Text(ansi()
 				.fgGreen().a(passed).a(" passed").reset()
@@ -130,7 +135,7 @@ private fun Summary(tests: SnapshotStateList<Test>) {
 				.toString())
 		}
 
-		Text("${tests.size} total")
+		Text("${testRuns.size} total")
 	}
 
 	var elapsed by remember { mutableStateOf(0) }
@@ -143,7 +148,7 @@ private fun Summary(tests: SnapshotStateList<Test>) {
 	Text("Time:  ${elapsed}s")
 }
 
-data class Test(
+data class TestRun(
 	val path: String,
 	val state: TestState,
 )
