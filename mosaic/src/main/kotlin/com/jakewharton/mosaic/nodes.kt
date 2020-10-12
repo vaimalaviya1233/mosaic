@@ -4,9 +4,34 @@ import androidx.compose.runtime.AbstractApplier
 import com.facebook.yoga.YogaMeasureOutput
 import com.facebook.yoga.YogaNode
 import com.facebook.yoga.YogaNodeFactory
+import com.jakewharton.crossword.TextCanvas
 import com.jakewharton.crossword.visualCodePointCount
 
-internal sealed class MosaicNode {
+internal interface Renderable {
+	fun render(canvas: TextCanvas)
+}
+
+internal class RenderableLink(
+	val self: Renderable,
+	val next: Renderable?,
+) : Renderable {
+	override fun render(canvas: TextCanvas) {
+		self.render(canvas)
+		next?.render(canvas)
+	}
+}
+
+class BackgroundModifier : Modifier.Element {
+	override fun toString() = "Background(TODO)"
+}
+
+class BackgroundRenderable : Renderable {
+	override fun render(canvas: TextCanvas) {
+		TODO("Not yet implemented")
+	}
+}
+
+internal sealed class MosaicNode : Renderable {
 	val yoga: YogaNode = YogaNodeFactory.create()
 }
 
@@ -26,11 +51,47 @@ internal class TextNode(initialValue: String = "") : MosaicNode() {
 			yoga.dirty()
 		}
 
+	private val innerRenderable = object : Renderable {
+		override fun render(canvas: TextCanvas) {
+			value.split('\n').forEachIndexed { index, line ->
+				canvas.write(index, 0, line)
+			}
+		}
+	}
+
+	private var renderable: Renderable = innerRenderable
+
+	fun setModifiers(modifier: Modifier) {
+		renderable = modifier.foldOut<Renderable>(innerRenderable) { element, p ->
+			val thisRenderable = when (element) {
+				is BackgroundModifier -> BackgroundRenderable()
+				else -> throw IllegalStateException("Unknown modifier element")
+			}
+			RenderableLink(thisRenderable, p)
+		}
+	}
+
+	override fun render(canvas: TextCanvas) {
+		renderable.render(canvas)
+	}
+
 	override fun toString() = "Text($value)"
 }
 
 internal class BoxNode : MosaicNode() {
 	val children = mutableListOf<MosaicNode>()
+
+	override fun render(canvas: TextCanvas) {
+		for (child in children) {
+			val childYoga = child.yoga
+			val left = childYoga.layoutX.toInt()
+			val top = childYoga.layoutY.toInt()
+			val right = left + childYoga.layoutWidth.toInt()
+			val bottom = top + childYoga.layoutHeight.toInt()
+			val clipped = canvas.clip(left, top, right, bottom)
+			child.render(clipped)
+		}
+	}
 
 	override fun toString() = children.joinToString(prefix = "Box(", postfix = ")")
 }
