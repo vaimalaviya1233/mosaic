@@ -8,10 +8,8 @@ import androidx.compose.runtime.dispatch.BroadcastFrameClock
 import androidx.compose.runtime.snapshots.Snapshot
 import androidx.compose.runtime.yoloGlobalEmbeddingContext
 import kotlinx.coroutines.CompletableDeferred
-import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart.UNDISPATCHED
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
@@ -23,11 +21,7 @@ import kotlinx.coroutines.yield
  */
 private const val ansiConsole = true
 
-interface MosaicScope : CoroutineScope {
-	fun setContent(content: @Composable () -> Unit)
-}
-
-fun runMosaic(body: suspend MosaicScope.() -> Unit) = runBlocking {
+fun runMosaic(body: @Composable () -> Unit) = runBlocking {
 	val output = if (ansiConsole) AnsiOutput else DebugOutput
 
 	var hasFrameWaiters = false
@@ -43,8 +37,11 @@ fun runMosaic(body: suspend MosaicScope.() -> Unit) = runBlocking {
 		override fun mainThreadCompositionContext() = composeContext
 	}
 
+	val effectJob = Job(job)
+	val effectContext = coroutineContext + effectJob
+
 	val rootNode = BoxNode()
-	val recomposer = Recomposer(composeContext)
+	val recomposer = Recomposer(effectContext)
 	val composition = compositionFor(Any(), MosaicNodeApplier(rootNode), recomposer)
 
 	// Start undispatched to ensure we can use suspending things inside the content.
@@ -66,28 +63,24 @@ fun runMosaic(body: suspend MosaicScope.() -> Unit) = runBlocking {
 		}
 	}
 
-	coroutineScope {
-		val scope = object : MosaicScope, CoroutineScope by this {
-			override fun setContent(content: @Composable () -> Unit) {
-				composition.setContent(content)
-				hasFrameWaiters = true
+	var snapshotNotificationsPending = false
+	val observer: (state: Any) -> Unit = {
+		if (!snapshotNotificationsPending) {
+			snapshotNotificationsPending = true
+			launch {
+				snapshotNotificationsPending = false
+				Snapshot.sendApplyNotifications()
 			}
 		}
-
-		var snapshotNotificationsPending = false
-		val observer: (state: Any) -> Unit = {
-			if (!snapshotNotificationsPending) {
-				snapshotNotificationsPending = true
-				launch {
-					snapshotNotificationsPending = false
-					Snapshot.sendApplyNotifications()
-				}
-			}
-		}
-		Snapshot.registerGlobalWriteObserver(observer)
-
-		scope.body()
 	}
+	Snapshot.registerGlobalWriteObserver(observer)
+
+	composition.setContent(body)
+	hasFrameWaiters = true
+	yield()
+
+	effectJob.complete()
+	effectJob.join()
 
 	// Ensure the final state modification is discovered. We need to ensure that the coroutine
 	// which is running the recomposition loop wakes up, notices the changes, and waits for the
