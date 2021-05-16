@@ -1,40 +1,22 @@
 package com.jakewharton.mosaic
 
 import androidx.compose.runtime.AbstractApplier
-import com.facebook.yoga.YogaConstants.UNDEFINED
-import com.facebook.yoga.YogaMeasureOutput
-import com.facebook.yoga.YogaNode
-import com.facebook.yoga.YogaNodeFactory
+import androidx.constraintlayout.core.widgets.ConstraintWidget
+import androidx.constraintlayout.core.widgets.ConstraintWidgetContainer
+import androidx.constraintlayout.core.widgets.Flow
 
-internal sealed class MosaicNode {
-	val yoga: YogaNode = YogaNodeFactory.create()
-
-	abstract fun renderTo(canvas: TextCanvas)
-
-	fun render(): String {
-		val canvas = with(yoga) {
-			calculateLayout(UNDEFINED, UNDEFINED)
-			TextSurface(layoutWidth.toInt(), layoutHeight.toInt())
-		}
-		renderTo(canvas)
-		return canvas.toString()
-	}
+internal interface Node {
+	fun renderTo(canvas: TextCanvas)
 }
 
-internal class TextNode(initialValue: String = "") : MosaicNode() {
-	init {
-		yoga.setMeasureFunction { _, _, _, _, _ ->
-			val lines = value.split('\n')
-			val measuredWidth = lines.maxOf { it.codePointCount(0, it.length) }
-			val measuredHeight = lines.size
-			YogaMeasureOutput.make(measuredWidth, measuredHeight)
-		}
-	}
-
-	var value: String = initialValue
+internal class TextNode : ConstraintWidget(), Node {
+	var value: String = ""
 		set(value) {
 			field = value
-			yoga.dirty()
+
+			val lines = value.split('\n')
+			width = lines.maxOf { it.codePointCount(0, it.length) }
+			height = lines.size
 		}
 
 	var foreground: Color? = null
@@ -46,70 +28,89 @@ internal class TextNode(initialValue: String = "") : MosaicNode() {
 			canvas.write(index, 0, line, foreground, background, style)
 		}
 	}
-
-	override fun toString() = "Text($value)"
 }
 
-internal class BoxNode : MosaicNode() {
-	val children = mutableListOf<MosaicNode>()
-
+internal class BoxNode : Flow(), Node {
 	override fun renderTo(canvas: TextCanvas) {
-		for (child in children) {
-			val childYoga = child.yoga
-			val left = childYoga.layoutX.toInt()
-			val top = childYoga.layoutY.toInt()
-			val right = left + childYoga.layoutWidth.toInt() - 1
-			val bottom = top + childYoga.layoutHeight.toInt() - 1
-			child.renderTo(canvas[top..bottom, left..right])
+		for (child in mWidgets) {
+			val clipped = canvas[child.top until child.bottom, child.left until child.right]
+			(child as Node).renderTo(clipped)
 		}
 	}
-
-	override fun toString() = children.joinToString(prefix = "Box(", postfix = ")")
 }
 
-internal class MosaicNodeApplier(root: BoxNode) : AbstractApplier<MosaicNode>(root) {
-	override fun insertTopDown(index: Int, instance: MosaicNode) {
-		// Ignored, we insert bottom-up.
+internal class MosaicNodeApplier(
+	private val container: ConstraintWidgetContainer,
+	root: BoxNode,
+) : AbstractApplier<ConstraintWidget>(root) {
+	override fun insertTopDown(index: Int, instance: ConstraintWidget) {
+		container.add(instance)
+
+		val boxNode = current as BoxNode
+		var widgets = boxNode.mWidgets
+		val widgetCount = boxNode.mWidgetsCount
+
+		// Check for require expansion.
+		if (widgetCount == widgets.size) {
+			widgets = widgets.copyOf(widgetCount * 2)
+			boxNode.mWidgets = widgets
+		}
+
+		// Check for required element shift to accomodate insertion in the middle.
+		if (index < widgetCount) {
+			widgets.copyInto(widgets, index + 1, index, widgetCount)
+		}
+
+		widgets[index] = instance
+		boxNode.mWidgetsCount = widgetCount + 1
 	}
 
-	override fun insertBottomUp(index: Int, instance: MosaicNode) {
-		val boxNode = current as BoxNode
-		boxNode.children.add(index, instance)
-		boxNode.yoga.addChildAt(instance.yoga, index)
+	override fun insertBottomUp(index: Int, instance: ConstraintWidget) {
+		// This applier inserts top-down.
 	}
 
 	override fun remove(index: Int, count: Int) {
 		val boxNode = current as BoxNode
-		boxNode.children.remove(index, count)
-		repeat(count) {
-			boxNode.yoga.removeChildAt(index)
+		val widgets = boxNode.mWidgets
+		val widgetCount = boxNode.mWidgetsCount
+
+		val endIndex = index + count
+		for (i in index until endIndex) {
+			container.remove(widgets[i])
 		}
+
+		val clearFromIndex = if (endIndex == widgetCount) {
+			index
+		} else {
+			widgets.copyInto(widgets, index, endIndex, widgetCount)
+			widgetCount - count
+		}
+		widgets.fill(null, clearFromIndex)
+		boxNode.mWidgetsCount = widgetCount - count
 	}
 
 	override fun move(from: Int, to: Int, count: Int) {
 		val boxNode = current as BoxNode
-		boxNode.children.move(from, to, count)
+		val widgets = boxNode.mWidgets
 
-		val yoga = boxNode.yoga
-		val newIndex = if (to > from) to - count else to
 		if (count == 1) {
-			val node = yoga.removeChildAt(from)
-			yoga.addChildAt(node, newIndex)
+			val item = widgets[from]
+			// TODO shift other elements
+			// TODO write item
+			TODO()
 		} else {
-			val nodes = Array(count) {
-				yoga.removeChildAt(from)
-			}
-			nodes.forEachIndexed { offset, node ->
-				yoga.addChildAt(node, newIndex + offset)
-			}
+			// TODO copy elements into array
+			// TODO shift other elements
+			// TODO write element array
+			TODO()
 		}
 	}
 
 	override fun onClear() {
-		val boxNode = root as BoxNode
-		// Remove in reverse to avoid internal list copies.
-		for (i in boxNode.yoga.childCount - 1 downTo 0) {
-			boxNode.yoga.removeChildAt(i)
-		}
+		container.removeAllChildren()
+		container.add(root)
+
+		val boxNode = current as BoxNode
+		boxNode.removeAllIds()
 	}
 }

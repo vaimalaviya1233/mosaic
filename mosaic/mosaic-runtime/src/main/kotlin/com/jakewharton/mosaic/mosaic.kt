@@ -5,6 +5,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Composition
 import androidx.compose.runtime.Recomposer
 import androidx.compose.runtime.snapshots.Snapshot
+import androidx.constraintlayout.core.widgets.ConstraintWidgetContainer
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart.UNDISPATCHED
@@ -36,9 +37,10 @@ fun runMosaic(body: suspend MosaicScope.() -> Unit) = runBlocking {
 	val job = Job(coroutineContext[Job])
 	val composeContext = coroutineContext + clock + job
 
+	val container = ConstraintWidgetContainer()
 	val rootNode = BoxNode()
 	val recomposer = Recomposer(composeContext)
-	val composition = Composition(MosaicNodeApplier(rootNode), recomposer)
+	val composition = Composition(MosaicNodeApplier(container, rootNode), recomposer)
 
 	// Start undispatched to ensure we can use suspending things inside the content.
 	launch(start = UNDISPATCHED, context = composeContext) {
@@ -52,7 +54,11 @@ fun runMosaic(body: suspend MosaicScope.() -> Unit) = runBlocking {
 				hasFrameWaiters = false
 				clock.sendFrame(0L) // Frame time value is not used by Compose runtime.
 
-				output.display(rootNode.render())
+				container.layout()
+				val surface = TextSurface(container.width, container.height)
+				rootNode.renderTo(surface)
+				output.display(surface.toString())
+
 				displaySignal?.complete(Unit)
 			}
 			delay(50)

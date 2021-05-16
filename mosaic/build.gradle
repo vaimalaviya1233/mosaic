@@ -25,8 +25,6 @@ dokkaHtmlMultiModule {
 		// Do not include Compose in our documentation site.
 		project(":compose:compiler"),
 		project(":compose:runtime"),
-		// Yoga is an implementation detail deployed separately for build simplicity.
-		project(":yoga"),
 	])
 }
 
@@ -36,6 +34,7 @@ allprojects {
 
 	repositories {
 		mavenCentral()
+		google()
 		jcenter {
 			mavenContent {
 				includeModule("org.jetbrains.kotlinx", "kotlinx-html-jvm")

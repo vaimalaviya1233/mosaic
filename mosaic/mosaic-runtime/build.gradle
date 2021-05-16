@@ -5,8 +5,10 @@ apply plugin: 'com.vanniktech.maven.publish'
 
 dependencies {
 	api project(':compose:runtime')
-	implementation project(':yoga')
 	implementation deps.jansi
+
+	// TODO this needs shaded, cannot force google() repo onto consumers
+	implementation 'androidx.constraintlayout:constraintlayout-core:1.0.0-beta02'
 
 	testImplementation deps.junit
 	testImplementation deps.truth
