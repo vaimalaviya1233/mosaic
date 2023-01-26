@@ -14,7 +14,7 @@ public fun Text(
 ) {
 	ComposeNode<TextNode, MosaicNodeApplier>(::TextNode) {
 		set(value) {
-			this.value = value
+			this.text = value
 		}
 		set(color) {
 			this.foreground = color

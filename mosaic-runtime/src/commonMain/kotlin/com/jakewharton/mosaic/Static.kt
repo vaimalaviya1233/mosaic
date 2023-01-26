@@ -5,6 +5,10 @@ import androidx.compose.runtime.ComposeNode
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.remember
+import com.github.ajalt.mordant.rendering.Lines
+import com.github.ajalt.mordant.rendering.Widget
+import com.github.ajalt.mordant.rendering.WidthRange
+import com.github.ajalt.mordant.terminal.Terminal
 import kotlinx.coroutines.flow.Flow
 
 /**
@@ -48,43 +52,29 @@ public fun <T> Static(
 
 internal class StaticNode(
 	private val postRender: () -> Unit,
-) : ContainerNode() {
+) : ContainerNode, Widget {
 	// Delegate container column for static content.
-	private val box = LinearNode(isRow = false)
+	private val column = LinearNode(isRow = false)
 
 	override val children: MutableList<MosaicNode>
-		get() = box.children
+		get() = column.children
 
-	override fun measure() {
-		// Not visible.
-	}
-
-	override fun layout() {
-		// Not visible.
-	}
-
-	override fun renderTo(canvas: TextCanvas) {
-		// No content.
-	}
-
-	override fun renderStatics(): List<TextCanvas> {
-		val statics = mutableListOf<TextCanvas>()
-
-		// Render contents of static node to a separate display.
-		val static = box.render()
-
-		// Add display canvas to static canvases if it is not empty.
-		if (static.width > 0 && static.height > 0) {
-			statics.add(static)
+	override fun staticWidgets(): List<Widget> {
+		val statics = buildList {
+			if (column.children.isNotEmpty()) {
+				add(column.toWidget())
+			}
+			addAll(column.staticWidgets())
 		}
-
-		// Propagate any static content of the display.
-		statics.addAll(box.renderStatics())
 
 		postRender()
 
 		return statics
 	}
 
-	override fun toString() = box.children.joinToString(prefix = "Static(", postfix = ")")
+	override fun toWidget() = this
+	override fun measure(t: Terminal, width: Int) = WidthRange(0, 0)
+	override fun render(t: Terminal, width: Int) = Lines(emptyList())
+
+	override fun toString() = column.children.joinToString(prefix = "Static(", postfix = ")")
 }

@@ -5,7 +5,7 @@ import kotlin.time.TimeMark
 import kotlin.time.TimeSource
 
 internal interface Output {
-	fun display(canvas: TextCanvas, statics: List<TextCanvas>)
+	fun display(content: String, static: String?)
 }
 
 @OptIn(ExperimentalTime::class) // Not used in production.
@@ -13,20 +13,20 @@ internal object DebugOutput : Output {
 	private val systemClock = TimeSource.Monotonic
 	private var lastRender: TimeMark? = null
 
-	override fun display(canvas: TextCanvas, statics: List<TextCanvas>) {
+	override fun display(content: String, static: String?) {
 		println(buildString {
 			lastRender?.let { lastRender ->
+				appendLine()
 				repeat(50) { append('~') }
 				append(" +")
 				appendLine(lastRender.elapsedNow())
 			}
 			lastRender = systemClock.markNow()
 
-			for (static in statics) {
-				appendLine(static.render())
+			if (static != null) {
+				appendLine(static)
 			}
-
-			appendLine(canvas.render())
+			appendLine(content)
 		})
 	}
 }
@@ -35,7 +35,7 @@ internal object AnsiOutput : Output {
 	private val stringBuilder = StringBuilder(100)
 	private var lastHeight = 0
 
-	override fun display(canvas: TextCanvas, statics: List<TextCanvas>) {
+	override fun display(content: String, static: String?) {
 		stringBuilder.apply {
 			clear()
 
@@ -43,8 +43,8 @@ internal object AnsiOutput : Output {
 				append("\u001B[F") // Cursor up line.
 			}
 
-			val staticLines = statics.flatMap { it.render().split("\n") }
-			val lines = canvas.render().split("\n")
+			val staticLines = static?.split("\n") ?: emptyList()
+			val lines = content.split("\n")
 			for (line in staticLines + lines) {
 				append(line)
 				append("\u001B[K") // Clear rest of line.
@@ -52,7 +52,7 @@ internal object AnsiOutput : Output {
 			}
 
 			// If the new output contains fewer lines than the last output, clear those old lines.
-			val extraLines = lastHeight - (lines.size + staticLines.size)
+			val extraLines = lastHeight - lines.size
 			for (i in 0 until extraLines) {
 				if (i > 0) {
 					append('\n')

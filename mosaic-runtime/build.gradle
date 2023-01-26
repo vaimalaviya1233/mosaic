@@ -15,7 +15,7 @@ kotlin {
 			dependencies {
 				api libs.jetbrains.compose.runtime
 				api libs.kotlinx.coroutines.core
-				implementation libs.codepoints
+				implementation libs.mordant
 			}
 		}
 		commonTest {

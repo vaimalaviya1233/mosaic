@@ -5,6 +5,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Composition
 import androidx.compose.runtime.Recomposer
 import androidx.compose.runtime.snapshots.Snapshot
+import com.github.ajalt.mordant.table.verticalLayout
+import com.github.ajalt.mordant.terminal.Terminal
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart.UNDISPATCHED
@@ -44,16 +46,29 @@ public suspend fun runMosaic(body: suspend MosaicScope.() -> Unit): Unit = corou
 		recomposer.runRecomposeAndApplyChanges()
 	}
 
-	var displaySignal: CompletableDeferred<Unit>? = null
+	val terminal = Terminal()
+	var displaySignal: CompletableDeferred<Unit>? = CompletableDeferred(Unit)
 	launch(context = composeContext) {
 		while (true) {
 			if (hasFrameWaiters) {
 				hasFrameWaiters = false
 				clock.sendFrame(0L) // Frame time value is not used by Compose runtime.
 
-				val canvas = rootNode.render()
-				val statics = rootNode.renderStatics()
-				output.display(canvas, statics)
+				val contentWidget = rootNode.toWidget()
+				val content = terminal.render(contentWidget)
+
+				val staticWidgets = rootNode.staticWidgets()
+				val static = if (staticWidgets.isEmpty()) {
+					null
+				} else {
+					terminal.render(verticalLayout {
+						for (staticWidget in staticWidgets) {
+							cell(staticWidget)
+						}
+					})
+				}
+
+				output.display(content, static)
 
 				displaySignal?.complete(Unit)
 			}

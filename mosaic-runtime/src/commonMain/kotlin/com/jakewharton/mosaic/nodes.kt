@@ -1,155 +1,49 @@
 package com.jakewharton.mosaic
 
 import androidx.compose.runtime.AbstractApplier
-import de.cketti.codepoints.codePointCount
+import com.github.ajalt.mordant.rendering.Widget
+import com.github.ajalt.mordant.table.LinearLayoutBuilder
+import com.github.ajalt.mordant.table.horizontalLayout
+import com.github.ajalt.mordant.table.verticalLayout
+import com.github.ajalt.mordant.widgets.Text
 
-internal sealed class MosaicNode {
-	// These two values are set by a call to `measure`.
-	var width = 0
-	var height = 0
-
-	// These two values are set by a call to `layout` on the parent node.
-	/** Pixels right relative to parent at which this node will render. */
-	var x = 0
-	/** Pixels down relative to parent at which this node will render. */
-	var y = 0
-
-	/** Measure this node (and any children) and update [width] and [height]. */
-	abstract fun measure()
-	/** Layout any children nodes and update their [x] and [y] relative to this node. */
-	abstract fun layout()
-	abstract fun renderTo(canvas: TextCanvas)
-
-	fun render(): TextCanvas {
-		measure()
-		layout()
-		val canvas = TextSurface(width, height)
-		renderTo(canvas)
-		return canvas
-	}
-
-	abstract fun renderStatics(): List<TextCanvas>
+internal sealed interface MosaicNode {
+	fun toWidget(): Widget
+	fun staticWidgets(): List<Widget>
 }
 
-internal class TextNode(initialValue: String = "") : MosaicNode() {
-	private var sizeInvalidated = true
-	var value: String = initialValue
-		set(value) {
-			field = value
-			sizeInvalidated = true
-		}
-
+internal class TextNode(var text: String = "") : MosaicNode {
 	var foreground: Color? = null
 	var background: Color? = null
 	var style: TextStyle? = null
 
-	override fun measure() {
-		if (sizeInvalidated) {
-			val lines = value.split('\n')
-			width = lines.maxOf { it.codePointCount(0, it.length) }
-			height = lines.size
-			sizeInvalidated = false
-		}
-	}
-
-	override fun layout() {
-		// No children.
-	}
-
-	override fun renderTo(canvas: TextCanvas) {
-		value.split('\n').forEachIndexed { index, line ->
-			canvas.write(index, 0, line, foreground, background, style)
-		}
-	}
-
-	override fun renderStatics() = emptyList<TextCanvas>()
-
-	override fun toString() = "Text(\"$value\", x=$x, y=$y, width=$width, height=$height)"
+	override fun staticWidgets() = emptyList<Widget>()
+	override fun toWidget() = Text(text)
+	override fun toString() = "Text($text)"
 }
 
-internal sealed class ContainerNode : MosaicNode() {
-	abstract val children: MutableList<MosaicNode>
+internal sealed interface ContainerNode : MosaicNode {
+	val children: MutableList<MosaicNode>
 }
 
-internal class LinearNode(var isRow: Boolean = true) : ContainerNode() {
+internal class LinearNode(var isRow: Boolean = true) : ContainerNode {
 	override val children = mutableListOf<MosaicNode>()
 
-	override fun measure() {
-		if (isRow) {
-			measureRow()
-		} else {
-			measureColumn()
-		}
-	}
-
-	private fun measureRow() {
-		var width = 0
-		var height = 0
-		for (child in children) {
-			child.measure()
-			width += child.width
-			height = maxOf(height, child.height)
-		}
-		this.width = width
-		this.height = height
-	}
-
-	private fun measureColumn() {
-		var width = 0
-		var height = 0
-		for (child in children) {
-			child.measure()
-			width = maxOf(width, child.width)
-			height += child.height
-		}
-		this.width = width
-		this.height = height
-	}
-
-	override fun layout() {
-		if (isRow) {
-			layoutRow()
-		} else {
-			layoutColumn()
-		}
-	}
-
-	private fun layoutRow() {
-		var childX = 0
-		for (child in children) {
-			child.x = childX
-			child.y = 0
-			child.layout()
-			childX += child.width
-		}
-	}
-
-	private fun layoutColumn() {
-		var childY = 0
-		for (child in children) {
-			child.x = 0
-			child.y = childY
-			child.layout()
-			childY += child.height
-		}
-	}
-
-	override fun renderTo(canvas: TextCanvas) {
-		for (child in children) {
-			if (child.width != 0 && child.height != 0) {
-				val left = child.x
-				val top = child.y
-				val right = left + child.width - 1
-				val bottom = top + child.height - 1
-				child.renderTo(canvas[top..bottom, left..right])
-			} else {
-				child.renderTo(canvas.empty())
+	override fun toWidget(): Widget {
+		fun LinearLayoutBuilder.addChildren() {
+			for (child in children) {
+				cell(child.toWidget())
 			}
 		}
+		return if (isRow) {
+			horizontalLayout { addChildren() }
+		} else {
+			verticalLayout { addChildren() }
+		}
 	}
 
-	override fun renderStatics(): List<TextCanvas> {
-		return children.flatMap(MosaicNode::renderStatics)
+	override fun staticWidgets(): List<Widget> {
+		return children.flatMap(MosaicNode::staticWidgets)
 	}
 
 	override fun toString() = children.joinToString(prefix = "Box(", postfix = ")")
