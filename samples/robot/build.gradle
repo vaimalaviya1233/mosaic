@@ -8,5 +8,4 @@ application {
 
 dependencies {
 	implementation projects.mosaicRuntime
-	implementation 'org.jline:jline:3.26.3'
 }

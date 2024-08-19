@@ -32,9 +32,13 @@ kotlin {
 		concurrentMain {
 			dependsOn(commonMain)
 		}
+		inputMain {
+			dependsOn(commonMain)
+		}
 
 		jvmMain {
 			dependsOn(concurrentMain)
+			dependsOn(inputMain)
 			dependencies {
 				implementation libs.jansi
 			}
@@ -51,6 +55,7 @@ kotlin {
 		}
 		if (target.platformType == KotlinPlatformType.native) {
 			target.compilations.main.defaultSourceSet.dependsOn(sourceSets.concurrentMain)
+			target.compilations.main.defaultSourceSet.dependsOn(sourceSets.inputMain)
 		}
 	}
 
