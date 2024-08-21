@@ -58,22 +58,26 @@ public fun renderMosaic(content: @Composable () -> Unit): String {
 public suspend fun runMosaic(content: @Composable () -> Unit) {
 	coroutineScope {
 		val terminal = MordantTerminal()
-		val rendering = createRendering(terminal.info.ansiLevel.toMosaicAnsiLevel())
-		val terminalState = terminal.toMutableState()
-		val keyEvents = Channel<KeyEvent>(UNLIMITED)
-		val mosaicComposition = MosaicComposition(
-			coroutineScope = this,
-			terminalState = terminalState,
-			keyEvents = keyEvents,
-			onEndChanges = { rootNode ->
-				platformDisplay(rendering.render(rootNode))
-			},
-		)
-		mosaicComposition.sendFrames()
-		mosaicComposition.scope.updateTerminalInfo(terminal, terminalState)
-		mosaicComposition.scope.enterRawModeAndReadKeys(terminal, keyEvents)
-		mosaicComposition.setContent(content)
-		mosaicComposition.awaitComplete()
+		terminal.enterRawMode().use { rawMode ->
+			val rendering = createRendering(terminal.info.ansiLevel.toMosaicAnsiLevel())
+			val terminalState = terminal.toMutableState()
+			val keyEvents = Channel<KeyEvent>(UNLIMITED)
+			val mosaicComposition = MosaicComposition(
+				coroutineScope = this,
+				terminalState = terminalState,
+				keyEvents = keyEvents,
+				onEndChanges = { rootNode ->
+					platformDisplay(rendering.render(rootNode))
+				},
+			)
+			mosaicComposition.sendFrames()
+			mosaicComposition.scope.updateTerminalInfo(terminal, terminalState)
+			if (rawMode != null) {
+				mosaicComposition.scope.readRawModeKeys(rawMode, keyEvents)
+			}
+			mosaicComposition.setContent(content)
+			mosaicComposition.awaitComplete()
+		}
 	}
 }
 
@@ -109,23 +113,17 @@ private fun CoroutineScope.updateTerminalInfo(terminal: MordantTerminal, termina
 	}
 }
 
-private fun CoroutineScope.enterRawModeAndReadKeys(terminal: MordantTerminal, keyEvents: Channel<KeyEvent>) {
-	terminal.enterRawMode()?.let { rawMode ->
-		launch(Dispatchers.Default) {
-			try {
-				while (isActive) {
-					val keyboardEvent = rawMode.readKey(10.milliseconds) ?: continue
-					val keyEvent = KeyEvent(
-						key = keyboardEvent.key,
-						alt = keyboardEvent.alt,
-						ctrl = keyboardEvent.ctrl,
-						shift = keyboardEvent.shift,
-					)
-					keyEvents.trySend(keyEvent)
-				}
-			} finally {
-				rawMode.close()
-			}
+private fun CoroutineScope.readRawModeKeys(rawMode: RawMode, keyEvents: Channel<KeyEvent>) {
+	launch(Dispatchers.Default) {
+		while (isActive) {
+			val keyboardEvent = rawMode.readKey(10.milliseconds) ?: continue
+			val keyEvent = KeyEvent(
+				key = keyboardEvent.key,
+				alt = keyboardEvent.alt,
+				ctrl = keyboardEvent.ctrl,
+				shift = keyboardEvent.shift,
+			)
+			keyEvents.trySend(keyEvent)
 		}
 	}
 }
