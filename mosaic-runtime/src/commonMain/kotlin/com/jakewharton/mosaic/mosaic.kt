@@ -83,7 +83,7 @@ public suspend fun runMosaic(content: @Composable () -> Unit) {
 
 private fun MordantTerminal.toMutableState(): MutableState<Terminal> {
 	return mutableStateOf(
-		Terminal(size = IntSize(info.width, info.height)),
+		Terminal(size = IntSize(size.width, size.height)),
 	)
 }
 
@@ -100,13 +100,11 @@ private fun CoroutineScope.updateTerminalInfo(terminal: MordantTerminal, termina
 	launch {
 		while (true) {
 			val currentTerminalInfo = terminalInfo.value
-			if (terminal.info.updateTerminalSize() &&
-				(
-					currentTerminalInfo.size.width != terminal.info.width ||
-						currentTerminalInfo.size.height != terminal.info.height
-					)
+			val newSize = terminal.updateSize()
+			if (currentTerminalInfo.size.width != newSize.width ||
+				currentTerminalInfo.size.height != newSize.height
 			) {
-				terminalInfo.value = Terminal(size = IntSize(terminal.info.width, terminal.info.height))
+				terminalInfo.value = Terminal(size = IntSize(newSize.width, newSize.height))
 			}
 			delay(50L)
 		}

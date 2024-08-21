@@ -26,6 +26,11 @@ allprojects {
 	repositories {
 		mavenCentral()
 		google()
+		repositories {
+			maven {
+				url 'https://oss.sonatype.org/content/repositories/snapshots/'
+			}
+		}
 	}
 
 	tasks.withType(JavaCompile).configureEach {
