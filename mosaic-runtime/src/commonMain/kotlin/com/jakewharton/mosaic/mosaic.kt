@@ -1,5 +1,6 @@
 package com.jakewharton.mosaic
 
+import com.github.ajalt.mordant.terminal.Terminal as MordantTerminal
 import androidx.compose.runtime.AbstractApplier
 import androidx.compose.runtime.BroadcastFrameClock
 import androidx.compose.runtime.Composable
@@ -10,7 +11,6 @@ import androidx.compose.runtime.Recomposer
 import androidx.compose.runtime.State
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.snapshots.Snapshot
-import com.github.ajalt.mordant.terminal.Terminal as MordantTerminal
 import com.jakewharton.mosaic.layout.MosaicNode
 import com.jakewharton.mosaic.ui.AnsiLevel
 import com.jakewharton.mosaic.ui.BoxMeasurePolicy
@@ -48,9 +48,18 @@ public fun renderMosaic(content: @Composable () -> Unit): String {
 	return createRendering().render(renderMosaicNode(content)).toString()
 }
 
+public interface MosaicScope {
+	public fun setHideCursor(hidden: Boolean)
+}
+
 public suspend fun runMosaic(content: @Composable () -> Unit) {
 	coroutineScope {
 		val terminal = MordantTerminal()
+
+		addPlatformShutdownHook {
+			println("SHUTDOWN!!!!!!")
+		}
+
 		val rendering = createRendering(terminal.info.ansiLevel.toMosaicAnsiLevel())
 		val terminalState = terminal.toMutableState()
 		val mosaicComposition = MosaicComposition(
